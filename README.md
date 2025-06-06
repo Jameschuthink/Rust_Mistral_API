@@ -1,3 +1,3 @@
 # Rust_Mistral_API
 
-THIS IS A TRIA
+This is a Practice of Rust to make a simple Mistral API Call.

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::clone::Clone;
-
+use miette::Result;
 // Request structs (for sending TO API)
 #[derive(Serialize)]
 pub struct Message {
@@ -10,7 +10,7 @@ pub struct Message {
 
 #[derive(Serialize)]
 pub struct ApiRequest {
-    pub model: String,
+    pub model: ModelType,
     pub messages: Vec<Message>,
 }
 
@@ -29,4 +29,14 @@ pub struct Choice {
 pub struct JsonField {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Serialize)]
+pub enum ModelType {
+    #[serde(rename = "mistral-large-latest")]
+    MistralLarge,
+    #[serde(rename = "mistral-small-latest")]
+    MistralSmall,
+    #[serde(rename = "codestral-latest")]
+    Codestral,
 }

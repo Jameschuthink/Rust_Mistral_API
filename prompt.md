@@ -22,7 +22,7 @@ pub async fn make_api_call() -> Result<String, Box<dyn std::error::Error>> {
     let api_key = crate::config::load_api_key()?;
 
     let api_request = ApiRequest {
-        model: "mistral-large-latest".to_string(),
+        model: ModelType::MistralSmall,
         messages: vec![Message {
             role: "user".to_string(),
             content: "What are you good at? One only, one sentence".to_string(),
@@ -71,7 +71,7 @@ pub struct Message {
 
 #[derive(Serialize)]
 pub struct ApiRequest {
-    pub model: String,
+    pub model: ModelType,
     pub messages: Vec<Message>,
 }
 
@@ -90,6 +90,16 @@ pub struct Choice {
 pub struct JsonField {
     pub role: String,
     pub content: String,
+}
+
+#[derive(Serialize)]
+pub enum ModelType {
+    #[serde(rename = "mistral-large-latest")]
+    MistralLarge,
+    #[serde(rename = "mistral-small-latest")]
+    MistralSmall,
+    #[serde(rename = "codestral-latest")]
+    Codestral,
 }
 
 ```

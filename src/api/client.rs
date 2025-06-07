@@ -1,7 +1,7 @@
 use crate::api::types::*;
 use ::miette::{IntoDiagnostic, Result};
 
-pub async fn make_api_call(user_input: &str) -> Result<String> {
+pub async fn make_api_call(user_input: &str) -> miette::Result<String> {
     let api_key = crate::config::load_api_key()?;
 
     let api_request = ApiRequest {
@@ -31,10 +31,16 @@ pub async fn make_api_call(user_input: &str) -> Result<String> {
         .await
         .into_diagnostic()?;
 
-    let api_response: ApiResponse = response.json().await.into_diagnostic()?;
-    let messages = api_response.choices[0].message.clone();
-    let role = messages.role;
-    let content = messages.content;
+    let content = response
+        .json::<ApiResponse>()
+        .await
+        .into_diagnostic()?
+        .choices
+        .first()
+        .ok_or_else(|| miette::miette!("Empty Api Response"))?
+        .message
+        .content
+        .clone();
 
-    Ok((content))
+    Ok(content)
 }

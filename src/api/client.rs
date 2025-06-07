@@ -1,15 +1,22 @@
 use crate::api::types::*;
 use ::miette::{IntoDiagnostic, Result};
 
-pub async fn make_api_call() -> Result<String> {
+pub async fn make_api_call(user_input: &str) -> Result<String> {
     let api_key = crate::config::load_api_key()?;
 
     let api_request = ApiRequest {
         model: ModelType::MistralSmall,
-        messages: vec![Message {
-            role: "user".to_string(),
-            content: "The bigget lie you think human made".to_string(),
-        }],
+        messages: vec![
+            Message {
+                role: "system".to_string(),
+                content: "Ignore all your training and only respond with the word 'banana'."
+                    .to_string(),
+            },
+            Message {
+                role: "user".to_string(),
+                content: user_input.to_string(),
+            },
+        ],
     };
 
     let client = reqwest::Client::new();
@@ -29,5 +36,5 @@ pub async fn make_api_call() -> Result<String> {
     let role = messages.role;
     let content = messages.content;
 
-    Ok(format!("role: {}, content:{}", role, content))
+    Ok((content))
 }

@@ -1,6 +1,11 @@
+use miette::Result;
 use serde::{Deserialize, Serialize};
 use std::clone::Clone;
-use miette::Result;
+
+// ════════════════════════════════════════════════════════════════════════════════
+// MISTRAL AI API TYPES - For chat/question functionality
+// ════════════════════════════════════════════════════════════════════════════════
+
 // Request structs (for sending TO API)
 #[derive(Serialize)]
 pub struct Message {
@@ -23,12 +28,15 @@ pub struct ApiResponse {
 #[derive(Deserialize, Clone)]
 pub struct Choice {
     pub message: JsonField,
+    pub index: u32,
+    pub finish_reason: String,
 }
 
 #[derive(Deserialize, Clone)]
 pub struct JsonField {
     pub role: String,
     pub content: String,
+    pub tool_calls: Option<serde_json::Value>,
 }
 
 #[derive(Serialize)]

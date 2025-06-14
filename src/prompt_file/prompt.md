@@ -15,9 +15,12 @@ src
 ├── error.rs
 ├── input.rs
 ├── main.rs
-└── music
+├── music
+│   ├── mod.rs
+│   └── types.rs
+└── prompt_file
     ├── mod.rs
-    └── types.rs
+    └── prompt.rs
 
 ```
 
@@ -31,7 +34,7 @@ pub async fn make_api_call(user_input: &str) -> miette::Result<String> {
     let api_key = crate::config::load_api_key()?;
 
     let api_request = ApiRequest {
-        model: ModelType::MistralLarge,
+        model: ModelType::MistralSmall,
         messages: vec![
             Message {
                 role: "system".to_string(),
@@ -54,11 +57,13 @@ pub async fn make_api_call(user_input: &str) -> miette::Result<String> {
         .await
         .into_diagnostic()?;
 
-    // ✅ FIXED: Now this will work because our types match the API
-    let content = response
-        .json::<ApiResponse>()
-        .await
-        .into_diagnostic()?
+    let raw_response = response.text().await.into_diagnostic()?;
+
+    let api_response: ApiResponse = serde_json::from_str(&raw_response)
+        .into_diagnostic()
+        .map_err(|e| miette::miette!("JSON parse error: {}\nRaw response: {}", e, raw_response))?;
+
+    let content = api_response
         .choices
         .first()
         .ok_or_else(|| miette::miette!("Empty Api Response"))?
@@ -160,12 +165,13 @@ pub fn load_jamendo_client_id() -> Result<String> {
 
 ```rs
 use crate::api::client::make_api_call;
+use crate::prompt_file::prompt;
 use std::borrow::Cow;
 
 #[derive(Debug, Clone)]
 pub enum UserIntent<'a> {
     GeneralQuery(Cow<'a, str>),
-    MusicRequest((Cow<'a, str>)),
+    MusicRequest(Cow<'a, str>),
 }
 
 pub struct IntentClassifier;
@@ -188,12 +194,8 @@ impl IntentClassifier {
     }
     async fn classify_with_ai(&self, input: &str) -> miette::Result<bool> {
         let classification_prompt = format!(
-            r#"You are a music intent classifier. Classify if the user wants music or not.
-        Respond with ONLY "MUSIC" or "GENERAL" - nothing else.
-
-        User query: "{}"
-
-        Classification:"#,
+            r#"Prompt {},User query: "{}"#,
+            prompt::CLASSIFICATION_PROMPT,
             input
         );
         let response = crate::api::client::make_api_call(&classification_prompt).await?;
@@ -202,20 +204,7 @@ impl IntentClassifier {
     }
 
     async fn refine_music(&self, input: &str) -> miette::Result<String> {
-        let refine_prompt = format!(
-            r#"Extract the most effective music search keywords from this request.
-            Return ONLY the search terms - no explanations, no quotes.
-
-            Examples:
-            "I want some chill jazz music" → "chill jazz"
-            "Play me upbeat electronic dance music" → "upbeat electronic dance"
-            "Something sad and slow" → "sad slow ballad"
-
-            User request: "{}"
-
-            Search terms:"#,
-            input
-        );
+        let refine_prompt = format!(r#"{}, User input{}"#, prompt::REFINEMENT_PROMPT, input);
         let refine_response = crate::api::client::make_api_call(&refine_prompt).await?;
         let trimmed_reponse = refine_response.trim().to_lowercase();
         Ok(trimmed_reponse)
@@ -273,6 +262,7 @@ mod config;
 mod core;
 mod input;
 mod music;
+mod prompt_file;
 
 use crate::core::intent::{IntentClassifier, UserIntent};
 use input::ChatInput;
@@ -297,10 +287,13 @@ async fn main() -> Result<()> {
                 let response = api::client::make_api_call(&*input).await?;
                 println!("🤖 AI: {}", response);
             }
-            UserIntent::MusicRequest(input) => {
-                let tracks = music::jamendo_search(&*input).await?;
+            UserIntent::MusicRequest(refined_query) => {
+                println!("🎯 Refined search: {}", refined_query);
+
+                let tracks = music::jamendo_search(&*refined_query).await?;
+
                 if tracks.is_empty() {
-                    println!("🎵 No tracks found for: {}", input);
+                    println!("🎵 No tracks found for: {}", refined_query);
                 } else {
                     println!("🎵 Found tracks:");
                     for song in tracks {
@@ -375,5 +368,66 @@ pub struct Track {
     pub artist_name: String,
     pub audio: String, // The streaming URL
 }
+
+```
+
+`src/prompt_file/mod.rs`:
+
+```rs
+pub mod prompt;
+
+```
+
+`src/prompt_file/prompt.rs`:
+
+```rs
+// Simple prompt constants - modify directly in this file
+
+pub const CLASSIFICATION_PROMPT: &str = r#"You are a music intent classifier. Determine if the user wants to SEARCH/PLAY music or just have a CONVERSATION about music.
+
+MUSIC = User wants to find/play/search for actual music tracks
+GENERAL = User wants advice, recommendations, or discussion about music
+
+Examples:
+
+MUSIC requests (wants actual tracks):
+- "play some jazz music"
+- "find me upbeat songs"
+- "I want to listen to sad music"
+- "search for electronic dance tracks"
+- "play something energetic"
+
+GENERAL requests (wants conversation/advice):
+- "what song would you recommend when alone?"
+- "what's your favorite music genre?"
+- "what should I listen to when sad?"
+- "can you suggest music for studying?"
+- "what music helps with anxiety?"
+- "tell me about jazz music"
+
+Respond with ONLY "MUSIC" or "GENERAL" - nothing else.
+
+User query: "{}"
+Classification:"#;
+
+pub const REFINEMENT_PROMPT: &str = r#"You are a music recommendation expert. When users request specific artists with descriptors, provide actual song recommendations from that artist that match the mood/style.
+
+For general requests without specific artists, extract search keywords.
+
+Examples:
+
+Specific Artist Requests:
+"I want some taylor swift energetic song" → "Taylor Swift - 22, Shake It Off, ME!"
+"play some sad billie eilish music" → "Billie Eilish - When The Party's Over, Ocean Eyes"
+"give me upbeat bruno mars songs" → "Bruno Mars - Uptown Funk, 24K Magic, Count On Me"
+
+General Music Requests:
+"I want some chill jazz music" → "chill jazz"
+"play energetic electronic music" → "energetic electronic"
+"something sad and slow" → "sad slow ballad"
+
+User request: "{}"
+
+Response:"#;
 
 ```

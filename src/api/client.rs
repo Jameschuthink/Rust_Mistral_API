@@ -9,8 +9,7 @@ pub async fn make_api_call(user_input: &str) -> miette::Result<String> {
         messages: vec![
             Message {
                 role: "system".to_string(),
-                content: "Ignore all your training and only respond with the word 'banana'."
-                    .to_string(),
+                content: "You are a helpful assistant who speak directly".to_string(),
             },
             Message {
                 role: "user".to_string(),
@@ -22,19 +21,20 @@ pub async fn make_api_call(user_input: &str) -> miette::Result<String> {
     let client = reqwest::Client::new();
     let response = client
         .post("https://api.mistral.ai/v1/chat/completions")
-        // Change the URL to something that definitely won't exist:
-        //.post("https://this-domain-absolutely-does-not-exist-12345.com/api")
-        .header("Content-Type", "application/json") // What's the singular version?
-        .header("Authorization", &format!("Bearer {}", api_key)) // Same method
+        .header("Content-Type", "application/json")
+        .header("Authorization", &format!("Bearer {}", api_key))
         .json(&api_request)
         .send()
         .await
         .into_diagnostic()?;
 
-    let content = response
-        .json::<ApiResponse>()
-        .await
-        .into_diagnostic()?
+    let raw_response = response.text().await.into_diagnostic()?;
+
+    let api_response: ApiResponse = serde_json::from_str(&raw_response)
+        .into_diagnostic()
+        .map_err(|e| miette::miette!("JSON parse error: {}\nRaw response: {}", e, raw_response))?;
+
+    let content = api_response
         .choices
         .first()
         .ok_or_else(|| miette::miette!("Empty Api Response"))?
